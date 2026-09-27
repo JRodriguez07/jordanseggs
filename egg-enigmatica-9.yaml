@@ -2,7 +2,7 @@ _comment: 'DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PANEL'
 meta:
   version: PLCN_v3
   update_url: 'https://raw.githubusercontent.com/JRodriguez07/jordanspanel/main/eggs/minecraft/egg-enigmatica-9.yaml'
-exported_at: '2026-09-27T10:15:00+00:00'
+exported_at: '2026-09-27T10:20:00+00:00'
 name: 'Enigmatica 9'
 author: justmikey2002@gmail.com
 uuid: 6bb9b7ba-2b6a-4416-8990-b165fe697555
@@ -44,6 +44,7 @@ scripts:
       #
       # Server Files: /mnt/server
       set -euo pipefail
+      echo "=== Enigmatica 9 egg install script (version 2026-09-27 r4: per-file overrides output) ==="
 
       apt-get update -qq
       apt-get install -y -qq curl unzip ca-certificates > /dev/null
@@ -142,19 +143,30 @@ scripts:
       # ---------------------------------------------------------------------------
       echo "Applying pack overrides (config, defaultconfigs, kubejs, ...)"
       mkdir -p /tmp/clientpack
-      echo "Client pack zip: $(du -h /tmp/clientpack.zip | cut -f1)"
+      echo "[overrides] client pack zip: $(du -h /tmp/clientpack.zip | cut -f1), $(unzip -Z1 /tmp/clientpack.zip 'overrides/*' 2> /dev/null | grep -vc '/$') files inside overrides/"
+
+      # Heartbeat: prints the running file count every 10s, so a stall is obvious
+      ( while sleep 10; do
+          echo "[overrides] still working... $(find /tmp/clientpack -type f 2> /dev/null | wc -l) files extracted so far"
+        done ) &
+      HEARTBEAT=$!
+      trap 'kill ${HEARTBEAT} 2> /dev/null || true' EXIT
+
+      echo "[overrides] step 1/2: extracting"
       unzip -o /tmp/clientpack.zip 'overrides/*' \
         -x 'overrides/local/*' 'overrides/packmenu/*' 'overrides/resources/*' \
            'overrides/kubejs/assets/*' 'overrides/kubejs/client_scripts/*' \
            'overrides/building_gadgets_patterns/*' \
            'overrides/config/*-client.toml' 'overrides/defaultconfigs/*-client.toml' \
-        -d /tmp/clientpack < /dev/null | awk 'NR % 200 == 0 { print "  ...extracted " NR " files" } END { print "  extracted " NR " entries" }'
+        -d /tmp/clientpack < /dev/null
       if [ ! -d /tmp/clientpack/overrides ]; then
         echo "ERROR: client pack has no overrides/ folder"
         exit 1
       fi
-      echo "Copying overrides into the server folder"
-      cp -a /tmp/clientpack/overrides/. /mnt/server/ < /dev/null
+
+      echo "[overrides] step 2/2: copying into the server folder"
+      cp -av /tmp/clientpack/overrides/. /mnt/server/ < /dev/null | sed -E "s#^'?/tmp/clientpack/overrides/\./?#  copied: #; s#' -> .*##"
+      kill "${HEARTBEAT}" 2> /dev/null || true
       for d in config kubejs; do
         if [ -z "$(ls -A "$d" 2> /dev/null)" ]; then
           echo "ERROR: ${d}/ is empty after applying overrides"
