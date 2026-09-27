@@ -2,7 +2,7 @@ _comment: 'DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PANEL'
 meta:
   version: PLCN_v3
   update_url: 'https://raw.githubusercontent.com/JRodriguez07/jordanspanel/main/eggs/minecraft/egg-enigmatica-9.yaml'
-exported_at: '2026-09-27T10:10:00+00:00'
+exported_at: '2026-09-27T10:15:00+00:00'
 name: 'Enigmatica 9'
 author: justmikey2002@gmail.com
 uuid: 6bb9b7ba-2b6a-4416-8990-b165fe697555
@@ -142,17 +142,19 @@ scripts:
       # ---------------------------------------------------------------------------
       echo "Applying pack overrides (config, defaultconfigs, kubejs, ...)"
       mkdir -p /tmp/clientpack
-      unzip -o -q /tmp/clientpack.zip 'overrides/*' \
+      echo "Client pack zip: $(du -h /tmp/clientpack.zip | cut -f1)"
+      unzip -o /tmp/clientpack.zip 'overrides/*' \
         -x 'overrides/local/*' 'overrides/packmenu/*' 'overrides/resources/*' \
            'overrides/kubejs/assets/*' 'overrides/kubejs/client_scripts/*' \
            'overrides/building_gadgets_patterns/*' \
            'overrides/config/*-client.toml' 'overrides/defaultconfigs/*-client.toml' \
-        -d /tmp/clientpack
+        -d /tmp/clientpack < /dev/null | awk 'NR % 200 == 0 { print "  ...extracted " NR " files" } END { print "  extracted " NR " entries" }'
       if [ ! -d /tmp/clientpack/overrides ]; then
         echo "ERROR: client pack has no overrides/ folder"
         exit 1
       fi
-      cp -a /tmp/clientpack/overrides/. /mnt/server/
+      echo "Copying overrides into the server folder"
+      cp -a /tmp/clientpack/overrides/. /mnt/server/ < /dev/null
       for d in config kubejs; do
         if [ -z "$(ls -A "$d" 2> /dev/null)" ]; then
           echo "ERROR: ${d}/ is empty after applying overrides"
