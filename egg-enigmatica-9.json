@@ -1,0 +1,94 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PANEL",
+    "meta": {
+        "version": "PLCN_v3",
+        "update_url": "https://raw.githubusercontent.com/JRodriguez07/jordanspanel/main/eggs/minecraft/egg-enigmatica-9.yaml"
+    },
+    "exported_at": "2026-09-27T10:20:00+00:00",
+    "name": "Enigmatica 9",
+    "author": "justmikey2002@gmail.com",
+    "uuid": "6bb9b7ba-2b6a-4416-8990-b165fe697555",
+    "description": "Enigmatica 9 (Minecraft 1.19.2, Forge) server. Installs the official Enigmatica 9 server pack from\nCurseForge using its bundled ServerStarter in install-only mode, then launches Forge directly so\nthe panel console, stop command and startup detection all work. Reinstalling cleanly replaces\nmods, configs and scripts while keeping the world.",
+    "tags": [
+        "minecraft",
+        "modpack",
+        "forge"
+    ],
+    "features": [
+        "eula",
+        "java_version",
+        "pid_limit"
+    ],
+    "docker_images": {
+        "Java 17": "ghcr.io/pelican-eggs/yolks:java_17"
+    },
+    "file_denylist": {},
+    "startup_commands": {
+        "Default": "java -Xms128M -XX:MaxRAMPercentage=95.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dfml.readTimeout=180 -Dfml.queryResult=confirm -Dterminal.jline=false -Dterminal.ansi=true $( [[ -f user_jvm_args.txt ]] && printf %s \"@user_jvm_args.txt\" ) @unix_args.txt nogui"
+    },
+    "config": {
+        "files": {
+            "server.properties": {
+                "parser": "properties",
+                "find": {
+                    "server-ip": "",
+                    "server-port": "{{server.allocations.default.port}}",
+                    "query.port": "{{server.allocations.default.port}}"
+                }
+            }
+        },
+        "startup": {
+            "done": ")! For help, type "
+        },
+        "logs": {},
+        "stop": "stop"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Enigmatica 9 installation script\n#\n# Server Files: /mnt/server\nset -euo pipefail\necho \"=== Enigmatica 9 egg install script (version 2026-09-27 r4: per-file overrides output) ===\"\n\napt-get update -qq\napt-get install -y -qq curl unzip ca-certificates > /dev/null\n\nmkdir -p /mnt/server\ncd /mnt/server\n\nPACK_URL=\"${SERVER_PACK_URL:-https://edge.forgecdn.net/files/8161/107/Enigmatica9Server-1.27.0.zip}\"\n\n# ---------------------------------------------------------------------------\n# Reinstall: clear everything the pack manages so no stale or duplicated\n# config survives (worlds, server.properties, ops, whitelist are kept).\n# ---------------------------------------------------------------------------\nif [ -f serverstarter.lock ] || [ -d mods ]; then\n  echo \"Existing install found - cleaning pack-managed files (world is kept)\"\n  if [ \"${BACKUP_CONFIGS:-1}\" = \"1\" ] && [ -d config ]; then\n    BACKUP=\"config-backup-$(date +%Y%m%d-%H%M%S).tar.gz\"\n    echo \"Backing up config, defaultconfigs and kubejs to ${BACKUP}\"\n    tar -czf \"${BACKUP}\" --ignore-failed-read config defaultconfigs kubejs 2> /dev/null || true\n  fi\n  rm -rf mods config defaultconfigs kubejs libraries serverstarter.lock unix_args.txt run.sh run.bat\nfi\n\n# ---------------------------------------------------------------------------\n# Download and unpack the server pack\n# ---------------------------------------------------------------------------\necho \"Downloading server pack: ${PACK_URL}\"\nrm -rf /tmp/serverpack /tmp/serverpack.zip\ncurl -fL --retry 3 -o /tmp/serverpack.zip \"${PACK_URL}\"\nmkdir -p /tmp/serverpack\nunzip -o -q /tmp/serverpack.zip -d /tmp/serverpack\n\nSETUP_FILE=$(find /tmp/serverpack -maxdepth 3 -name server-setup-config.yaml | head -n 1)\nif [ -z \"${SETUP_FILE}\" ]; then\n  echo \"ERROR: server-setup-config.yaml not found in the server pack. Is SERVER_PACK_URL a server pack?\"\n  exit 1\nfi\ncp -a \"$(dirname \"${SETUP_FILE}\")/.\" /mnt/server/\n\n# ---------------------------------------------------------------------------\n# Get ServerStarter (bundled, or the version start-server.sh asks for)\n# ---------------------------------------------------------------------------\nSTARTER_JAR=$(ls serverstarter-*.jar 2> /dev/null | head -n 1 || true)\nif [ -z \"${STARTER_JAR}\" ]; then\n  STARTER_JAR=$(grep -ohE 'serverstarter-[0-9.]+\\.jar' start-server.sh 2> /dev/null | head -n 1 || true)\n  STARTER_JAR=\"${STARTER_JAR:-serverstarter-2.4.0.jar}\"\n  STARTER_VER=$(echo \"${STARTER_JAR}\" | sed -E 's/serverstarter-([0-9.]+)\\.jar/\\1/')\n  echo \"Downloading ${STARTER_JAR}\"\n  curl -fL --retry 3 -o \"${STARTER_JAR}\" \\\n    \"https://github.com/EnigmaticaModpacks/ServerStarter/releases/download/v${STARTER_VER}/${STARTER_JAR}\"\nfi\n\n# ---------------------------------------------------------------------------\n# Download the client pack (manifest.json + overrides/) ourselves, so we know\n# it arrived. ServerStarter silently skips it if its own download fails.\n# ---------------------------------------------------------------------------\ncp server-setup-config.yaml /tmp/server-setup-config.yaml.orig\nMODPACK_URL=\"${CLIENT_PACK_URL:-}\"\nif [ -z \"${MODPACK_URL}\" ]; then\n  MODPACK_URL=$(grep -E '^[[:space:]]*modpackUrl:' server-setup-config.yaml | head -n 1 \\\n    | sed -E \"s/^[[:space:]]*modpackUrl:[[:space:]]*//; s/^['\\\"]//; s/['\\\"][[:space:]]*$//; s/[[:space:]]+$//\")\nfi\nif [ -z \"${MODPACK_URL}\" ]; then\n  echo \"ERROR: no client pack URL (modpackUrl missing from server-setup-config.yaml; set CLIENT_PACK_URL)\"\n  exit 1\nfi\necho \"Downloading client pack: ${MODPACK_URL}\"\nrm -rf /tmp/clientpack /tmp/clientpack.zip\ncurl -fL --retry 3 -o /tmp/clientpack.zip \"${MODPACK_URL}\"\nif ! unzip -l /tmp/clientpack.zip manifest.json > /dev/null 2>&1; then\n  echo \"ERROR: ${MODPACK_URL} is not a CurseForge pack zip (no manifest.json)\"\n  exit 1\nfi\n# Point ServerStarter at the local copy so it doesn't download it a second time\nsed -i -E \"s#^([[:space:]]*modpackUrl:).*#\\1 file:///tmp/clientpack.zip#\" server-setup-config.yaml\n\n# ---------------------------------------------------------------------------\n# Install mods + Forge (install-only mode exits instead of launching)\n# ---------------------------------------------------------------------------\necho \"Running ${STARTER_JAR} in install-only mode (downloads mods and Forge; this takes a while)\"\n# stdin from /dev/null: ServerStarter asks for the EULA and would wait forever in the\n# installer. The panel's EULA prompt handles acceptance on first start instead.\njava -jar \"${STARTER_JAR}\" install < /dev/null\ncp /tmp/server-setup-config.yaml.orig server-setup-config.yaml\n\nFORGE_ARGS=$(find libraries/net/minecraftforge/forge -name unix_args.txt 2> /dev/null | head -n 1 || true)\nif [ -z \"${FORGE_ARGS}\" ]; then\n  echo \"ERROR: Forge did not install (unix_args.txt missing). Check the output above.\"\n  exit 1\nfi\ncp \"${FORGE_ARGS}\" unix_args.txt\n\n# ---------------------------------------------------------------------------\n# Force-copy the pack's overrides/ over the server (replaces the manual upload).\n# Client-only folders are skipped, same list as the pack's own server config.\n# ---------------------------------------------------------------------------\necho \"Applying pack overrides (config, defaultconfigs, kubejs, ...)\"\nmkdir -p /tmp/clientpack\necho \"[overrides] client pack zip: $(du -h /tmp/clientpack.zip | cut -f1), $(unzip -Z1 /tmp/clientpack.zip 'overrides/*' 2> /dev/null | grep -vc '/$') files inside overrides/\"\n\n# Heartbeat: prints the running file count every 10s, so a stall is obvious\n( while sleep 10; do\n    echo \"[overrides] still working... $(find /tmp/clientpack -type f 2> /dev/null | wc -l) files extracted so far\"\n  done ) &\nHEARTBEAT=$!\ntrap 'kill ${HEARTBEAT} 2> /dev/null || true' EXIT\n\necho \"[overrides] step 1/2: extracting\"\nunzip -o /tmp/clientpack.zip 'overrides/*' \\\n  -x 'overrides/local/*' 'overrides/packmenu/*' 'overrides/resources/*' \\\n     'overrides/kubejs/assets/*' 'overrides/kubejs/client_scripts/*' \\\n     'overrides/building_gadgets_patterns/*' \\\n     'overrides/config/*-client.toml' 'overrides/defaultconfigs/*-client.toml' \\\n  -d /tmp/clientpack < /dev/null\nif [ ! -d /tmp/clientpack/overrides ]; then\n  echo \"ERROR: client pack has no overrides/ folder\"\n  exit 1\nfi\n\necho \"[overrides] step 2/2: copying into the server folder\"\ncp -av /tmp/clientpack/overrides/. /mnt/server/ < /dev/null | sed -E \"s#^'?/tmp/clientpack/overrides/\\./?#  copied: #; s#' -> .*##\"\nkill \"${HEARTBEAT}\" 2> /dev/null || true\nfor d in config kubejs; do\n  if [ -z \"$(ls -A \"$d\" 2> /dev/null)\" ]; then\n    echo \"ERROR: ${d}/ is empty after applying overrides\"\n    exit 1\n  fi\ndone\necho \"Overrides applied: $(find /tmp/clientpack/overrides -type f | wc -l) files\"\nrm -rf /tmp/clientpack /tmp/clientpack.zip /tmp/server-setup-config.yaml.orig\n\nrm -rf /tmp/serverpack /tmp/serverpack.zip\necho \"Enigmatica 9 install complete ($(ls mods | wc -l) mods)\"",
+            "container": "ghcr.io/pelican-eggs/installers:java_17",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server Pack URL",
+            "description": "Direct download link to the Enigmatica 9 server pack zip. Defaults to Enigmatica9Server-1.27.0.\nTo update, paste the new server file's link and use Settings > Reinstall Server. The Expert\npack's server zip works here too.",
+            "env_variable": "SERVER_PACK_URL",
+            "default_value": "https://edge.forgecdn.net/files/8161/107/Enigmatica9Server-1.27.0.zip",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": [
+                "required",
+                "url"
+            ],
+            "sort": 1
+        },
+        {
+            "name": "Back Up Configs On Reinstall",
+            "description": "1 = save config, defaultconfigs and kubejs to a config-backup-*.tar.gz before a reinstall wipes\nthem. 0 = no backup.",
+            "env_variable": "BACKUP_CONFIGS",
+            "default_value": "1",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": [
+                "required",
+                "boolean"
+            ],
+            "sort": 2
+        },
+        {
+            "name": "Client Pack URL (optional)",
+            "description": "Leave blank to use the pack zip listed in the server pack (manifest.json + overrides). Only set this\nto force a different Enigmatica9-x.y.z.zip; its overrides/ folder is copied over the server on\nevery install.",
+            "env_variable": "CLIENT_PACK_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": [
+                "nullable",
+                "url"
+            ],
+            "sort": 3
+        }
+    ]
+}
